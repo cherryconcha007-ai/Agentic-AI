@@ -3,34 +3,42 @@ import pandas as pd
 
 # 1. Page Configuration
 st.set_page_config(page_title="AI Factory Sandbox", layout="wide")
-st.title("🌡️ AI Factory: Full Dataset & Top 20 Highlights")
+st.title("🌡️ AI Factory: Advanced Sorting & Heatmap")
 
 # 2. Initial Data 
 data = [
     {"Company": "Nvidia", "Segment": "Compute", "Moat": 5, "Margin %": 55.0, "Growth %": 45.0},
     {"Company": "Arista", "Segment": "Networking", "Moat": 4, "Margin %": 38.0, "Growth %": 30.0},
     {"Company": "Vertiv", "Segment": "Power", "Moat": 4, "Margin %": 25.0, "Growth %": 25.0},
-    {"Company": "Equinix", "Segment": "Data Centers", "Moat": 3, "Margin %": 15.0, "Growth %": 12.0},
     {"Company": "Eaton", "Segment": "Power", "Moat": 4, "Margin %": 18.0, "Growth %": 15.0},
     {"Company": "Speculative AI", "Segment": "Compute", "Moat": 2, "Margin %": -5.0, "Growth %": 60.0},
+    {"Company": "Equinix", "Segment": "Data Centers", "Moat": 3, "Margin %": 15.0, "Growth %": 12.0},
 ]
 df = pd.DataFrame(data)
 
-# 3. Sidebar Filtering
-st.sidebar.header("Filter Analytics")
+# 3. Sidebar Filtering & Sorting
+st.sidebar.header("Control Panel")
+
+# Segment Filter
 selected_segment = st.sidebar.multiselect(
     "Select Infrastructure Segments:",
     options=df["Segment"].unique(),
     default=df["Segment"].unique()
 )
 
+# NEW: Multi-Option Sorting
+sort_choice = st.sidebar.radio(
+    "Choose Sort Priority:",
+    options=["Profitability First", "Growth % (Highest)", "TAFGS Score"]
+)
+
 df_filtered = df[df["Segment"].isin(selected_segment)]
 
 # 4. Interactive Data Editor
-st.subheader("📝 Edit All Company Metrics")
+st.subheader("📝 Edit Metrics")
 edited_df = st.data_editor(df_filtered, num_rows="dynamic")
 
-# 5. Scoring Logic Engine
+# 5. Scoring & Sorting Logic
 def get_margin_score(m):
     if m > 40: return 5
     elif m >= 30: return 4
@@ -39,41 +47,38 @@ def get_margin_score(m):
     else: return 1 
 
 if not edited_df.empty:
-    # Add Profitability Flag
+    # Logic Processing
     edited_df['Status'] = edited_df['Margin %'].apply(lambda x: '✅ Profitable' if x > 0 else '⚠️ Unprofitable')
-    
     edited_df['Margin Score'] = edited_df['Margin %'].apply(get_margin_score)
     edited_df['TAFGS'] = (edited_df['Moat'] * edited_df['Margin Score']) * edited_df['Growth %']
     
-    final_df = edited_df.sort_values("TAFGS", ascending=False).reset_index(drop=True)
+    # Apply the User's Sorting Choice
+    if sort_choice == "Profitability First":
+        # Sorts by Status (✅ before ⚠️) then by TAFGS
+        final_df = edited_df.sort_values(["Status", "TAFGS"], ascending=[False, False])
+    elif sort_choice == "Growth % (Highest)":
+        final_df = edited_df.sort_values("Growth %", ascending=False)
+    else:
+        final_df = edited_df.sort_values("TAFGS", ascending=False)
 
-    # 6. Metrics
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Leading Segment", final_df.groupby("Segment")["TAFGS"].mean().idxmax())
-    with c2:
-        st.metric("Total Companies", len(final_df))
-    with c3:
-        unprofitable_count = len(final_df[final_df['Margin %'] <= 0])
-        st.metric("Unprofitable Tracked", unprofitable_count)
+    final_df = final_df.reset_index(drop=True)
 
-    # 7. STYLING: HEATMAP + RED WARNING + TOP 20 HIGHLIGHT
-    st.subheader("📊 Full Dataset Ranking (Top 20 Highlighted)")
+    # 6. STYLING: Readable Highlights + Heatmaps
+    st.subheader(f"📊 Ranking: {sort_choice}")
 
-    def highlight_top_20(s):
+    def style_top_rows(s):
+        """Forces black text on the top 20 highlighted rows for readability."""
         is_top_20 = s.index < 20
-        return ['background-color: #fff4d1' if is_top_20[i] else '' for i in range(len(s))]
+        return ['background-color: #FFF9C4; color: black;' if is_top_20[i] else '' for i in range(len(s))]
 
-    # Apply styling
-    # Note: 'Reds_r' reverses the red map so low numbers are DARK RED
-    styled_df = final_df.style.apply(highlight_top_20, axis=0) \
+    # Build the Styled Table
+    styled_df = final_df.style.apply(style_top_rows, axis=0) \
                        .background_gradient(cmap='YlGn', subset=['TAFGS', 'Growth %']) \
                        .background_gradient(cmap='Blues', subset=['Moat']) \
                        .background_gradient(cmap='Reds_r', subset=['Margin %']) \
-                       .format({'Margin %': '{:.1f}%', 'Growth %': '{:.1f}%'})
+                       .format({'Margin %': '{:.1f}%', 'Growth %': '{:.1f}%', 'TAFGS': '{:.0f}'})
 
     st.dataframe(styled_df, use_container_width=True)
 
-    # 8. Export
-    csv = final_df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Export Full Research", data=csv, file_name='full_ai_factory_research.csv')
+    # 7. Export
+    st.download_button("📥 Export Current View", data=final_df.to_csv(index=False), file_name='ai_factory_export.csv')
